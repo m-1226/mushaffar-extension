@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "Mushaffar",
+  "version": "1.0.0",
+  "description": "Zero-backend password manager — auto-fill & sync",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "alarms",
+    "identity"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "oauth2": {
+    "client_id": "630430162817-lkgahv6d5ds9t7kii2mdo8mghk6ti35u.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive.appdata",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/content.ts"],
+      "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+M",
+        "mac": "Command+Shift+M"
+      },
+      "description": "Open Mushaffar"
+    }
+  },
+  "default_locale": "en",
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

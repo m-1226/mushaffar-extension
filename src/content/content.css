@@ -1,0 +1,14 @@
+/* Content script styles — minimal, only for injected elements */
+
+#mushaffar-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+#mushaffar-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#mushaffar-dropdown::-webkit-scrollbar-thumb {
+  background: #3A3D4A;
+  border-radius: 4px;
+}
