@@ -7,8 +7,8 @@ const savedMsg = document.getElementById('saved-msg')!;
 // Load saved settings
 chrome.storage.local.get(['autoLockMinutes', 'showAutofill', 'savePrompts'], (result) => {
   if (result.autoLockMinutes) autoLockInput.value = String(result.autoLockMinutes);
-  if (result.showAutofill !== undefined) showAutofillInput.checked = result.showAutofill;
-  if (result.savePrompts !== undefined) savePromptsInput.checked = result.savePrompts;
+  if (result.showAutofill !== undefined) showAutofillInput.checked = result.showAutofill as boolean;
+  if (result.savePrompts !== undefined) savePromptsInput.checked = result.savePrompts as boolean;
 });
 
 saveBtn.addEventListener('click', () => {

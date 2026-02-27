@@ -38,16 +38,16 @@ async function aesDecrypt(key: Uint8Array, iv: Uint8Array, data: Uint8Array): Pr
   // Web Crypto uses AES-CBC
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key,
+    key.buffer as ArrayBuffer,
     { name: 'AES-CBC' },
     false,
     ['decrypt']
   );
 
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-CBC', iv: iv },
+    { name: 'AES-CBC', iv: iv.buffer as ArrayBuffer },
     cryptoKey,
-    data
+    data.buffer as ArrayBuffer
   );
 
   return new TextDecoder().decode(decrypted);
@@ -56,7 +56,7 @@ async function aesDecrypt(key: Uint8Array, iv: Uint8Array, data: Uint8Array): Pr
 async function aesEncrypt(key: Uint8Array, iv: Uint8Array, data: string): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    key,
+    key.buffer as ArrayBuffer,
     { name: 'AES-CBC' },
     false,
     ['encrypt']
@@ -64,7 +64,7 @@ async function aesEncrypt(key: Uint8Array, iv: Uint8Array, data: string): Promis
 
   const encoded = new TextEncoder().encode(data);
   const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-CBC', iv: iv },
+    { name: 'AES-CBC', iv: iv.buffer as ArrayBuffer },
     cryptoKey,
     encoded
   );

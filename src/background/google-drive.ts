@@ -11,7 +11,8 @@ const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 
 async function getAuthToken(): Promise<string> {
   return new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive: true }, (token) => {
+    chrome.identity.getAuthToken({ interactive: true }, (result) => {
+      const token = typeof result === 'string' ? result : result?.token;
       if (chrome.runtime.lastError || !token) {
         reject(new Error(chrome.runtime.lastError?.message || 'Auth failed'));
       } else {
@@ -177,7 +178,8 @@ export async function getUserEmail(): Promise<string> {
  */
 export async function signOut(): Promise<void> {
   return new Promise((resolve) => {
-    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+    chrome.identity.getAuthToken({ interactive: false }, (result) => {
+      const token = typeof result === 'string' ? result : result?.token;
       if (token) {
         chrome.identity.removeCachedAuthToken({ token }, () => {
           // Also revoke on Google's side
