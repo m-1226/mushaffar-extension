@@ -344,8 +344,6 @@ function showSaveBanner(username: string, password: string) {
       lastEditDate: new Date().toISOString(),
     };
     chrome.runtime.sendMessage({ type: 'savePassword', password: newPassword });
-    // Upload to Drive
-    chrome.runtime.sendMessage({ type: 'uploadVault' });
     banner.remove();
   });
 
@@ -372,6 +370,21 @@ function extractDomain(url: string): string {
     return '';
   }
 }
+
+// --- Message listener (fill from popup) ---
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === 'fillCredential') {
+    const inputs = document.querySelectorAll<HTMLInputElement>('input');
+    inputs.forEach(inp => {
+      if (isUsernameField(inp) && msg.email) {
+        setInputValue(inp, msg.email);
+      } else if (isPasswordField(inp) && msg.password) {
+        setInputValue(inp, msg.password);
+      }
+    });
+  }
+});
 
 // --- Initialize ---
 

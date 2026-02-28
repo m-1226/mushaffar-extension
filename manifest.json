@@ -11,7 +11,7 @@
   ],
   "host_permissions": ["<all_urls>"],
   "oauth2": {
-    "client_id": "630430162817-lkgahv6d5ds9t7kii2mdo8mghk6ti35u.apps.googleusercontent.com",
+    "client_id": "630430162817-23998jmskch3beljpull1mromh2i9uib.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/drive.appdata",
@@ -51,6 +51,10 @@
       },
       "description": "Open Mushaffar"
     }
+  },
+  "options_page": "options.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "default_locale": "en",
   "web_accessible_resources": [

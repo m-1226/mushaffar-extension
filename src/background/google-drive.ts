@@ -90,8 +90,14 @@ export async function downloadBackup(): Promise<string | null> {
     }
   } catch { /* not text */ }
 
-  // Raw bytes — base64 encode them
-  return btoa(String.fromCharCode(...bytes));
+  // Raw bytes — base64 encode them (chunked to avoid call stack overflow)
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 /**

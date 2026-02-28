@@ -8,12 +8,65 @@
 </head>
 <body>
   <div id="app">
-    <!-- Lock Screen -->
-    <div id="lock-screen" class="screen active">
+    <!-- Setup Screen (first-time only) -->
+    <div id="setup-screen" class="screen">
       <div class="lock-header">
         <img src="/assets/icons/icon-48.png" alt="Mushaffar" class="logo">
         <h1>Mushaffar</h1>
-        <p class="subtitle" data-i18n="unlockSubtitle">Enter your master password to unlock</p>
+        <p class="subtitle">Set up your password vault</p>
+      </div>
+
+      <div id="setup-choice" class="setup-section">
+        <button id="setup-fresh-btn" class="btn-primary">Create New Vault</button>
+        <button id="setup-import-btn" class="btn-secondary">Import from App</button>
+      </div>
+
+      <div id="setup-fresh" class="setup-section hidden">
+        <form id="setup-form">
+          <div class="input-group">
+            <input type="password" id="setup-password" placeholder="Create master password" autocomplete="off">
+          </div>
+          <div class="input-group">
+            <input type="password" id="setup-confirm" placeholder="Confirm password" autocomplete="off">
+          </div>
+          <p class="hint">Minimum 8 characters</p>
+          <button type="submit" class="btn-primary">Create Vault</button>
+          <button type="button" id="setup-back-1" class="btn-link">Back</button>
+          <p id="setup-error" class="error hidden"></p>
+        </form>
+      </div>
+
+      <div id="setup-import" class="setup-section hidden">
+        <form id="import-form">
+          <div class="file-drop-zone" id="file-drop-zone">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p id="file-label">Drop .mushaffar file or click</p>
+            <input type="file" id="import-file" accept=".mushaffar" hidden>
+          </div>
+          <div class="input-group">
+            <input type="password" id="import-backup-password" placeholder="Backup password (from app)" autocomplete="off">
+          </div>
+          <div class="input-group">
+            <input type="password" id="import-master-password" placeholder="New master password" autocomplete="off">
+          </div>
+          <div class="input-group">
+            <input type="password" id="import-confirm" placeholder="Confirm master password" autocomplete="off">
+          </div>
+          <button type="submit" class="btn-primary" id="import-btn">Import &amp; Create Vault</button>
+          <button type="button" id="setup-back-2" class="btn-link">Back</button>
+          <p id="import-error" class="error hidden"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Lock Screen -->
+    <div id="lock-screen" class="screen">
+      <div class="lock-header">
+        <img src="/assets/icons/icon-48.png" alt="Mushaffar" class="logo">
+        <h1>Mushaffar</h1>
+        <p class="subtitle">Enter your master password to unlock</p>
       </div>
       <form id="unlock-form">
         <div class="input-group">
@@ -25,21 +78,25 @@
             </svg>
           </button>
         </div>
-        <button type="submit" id="unlock-btn" class="btn-primary" data-i18n="unlock">Unlock</button>
+        <button type="submit" id="unlock-btn" class="btn-primary">Unlock</button>
         <p id="unlock-error" class="error hidden"></p>
       </form>
     </div>
 
     <!-- Main Screen -->
     <div id="main-screen" class="screen">
-      <!-- Header -->
       <div class="main-header">
         <div class="header-left">
           <img src="/assets/icons/icon-48.png" alt="" class="logo-small">
           <span class="user-email" id="user-email"></span>
         </div>
         <div class="header-actions">
-          <button id="sync-btn" class="icon-btn" title="Sync">
+          <button id="connect-google-btn" class="icon-btn" title="Connect Google Account">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+          </button>
+          <button id="sync-btn" class="icon-btn" title="Sync with Drive" style="display:none;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
               <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
@@ -54,81 +111,63 @@
         </div>
       </div>
 
-      <!-- Tabs -->
-      <div class="tabs">
-        <button class="tab active" data-tab="passwords" data-i18n="passwords">Passwords</button>
-        <button class="tab" data-tab="cards" data-i18n="cards">Cards</button>
-        <button class="tab" data-tab="authenticator" data-i18n="authenticator">2FA</button>
-        <button class="tab" data-tab="generator" data-i18n="generator">Generator</button>
+      <div id="suggested-section" class="suggested-section hidden">
+        <div class="suggested-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          Suggested for this site
+        </div>
+        <div id="suggested-list" class="item-list"></div>
       </div>
 
-      <!-- Search -->
+      <div class="tabs">
+        <button class="tab active" data-tab="passwords">Passwords</button>
+        <button class="tab" data-tab="cards">Cards</button>
+        <button class="tab" data-tab="authenticator">2FA</button>
+        <button class="tab" data-tab="generator">Generator</button>
+      </div>
+
       <div class="search-bar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
         </svg>
-        <input type="text" id="search-input" placeholder="Search..." data-i18n-placeholder="searchPlaceholder">
+        <input type="text" id="search-input" placeholder="Search...">
       </div>
 
-      <!-- Passwords Tab -->
       <div id="tab-passwords" class="tab-content active">
         <div id="password-list" class="item-list"></div>
-        <div id="no-passwords" class="empty-state hidden">
-          <p data-i18n="noPasswords">No passwords found</p>
-        </div>
+        <div id="no-passwords" class="empty-state hidden"><p>No passwords found</p></div>
       </div>
 
-      <!-- Cards Tab -->
       <div id="tab-cards" class="tab-content">
         <div id="card-list" class="item-list"></div>
-        <div id="no-cards" class="empty-state hidden">
-          <p data-i18n="noCards">No cards found</p>
-        </div>
+        <div id="no-cards" class="empty-state hidden"><p>No cards found</p></div>
       </div>
 
-      <!-- Authenticator Tab -->
       <div id="tab-authenticator" class="tab-content">
         <div id="authenticator-list" class="item-list"></div>
-        <div id="no-authenticators" class="empty-state hidden">
-          <p data-i18n="noAuthenticators">No 2FA codes found</p>
-        </div>
+        <div id="no-authenticators" class="empty-state hidden"><p>No 2FA codes found</p></div>
       </div>
 
-      <!-- Generator Tab -->
       <div id="tab-generator" class="tab-content">
         <div class="generator-section">
           <div class="generated-password-box">
-            <span id="generated-password" class="generated-text">••••••••••••</span>
+            <span id="generated-password" class="generated-text">............</span>
             <button id="copy-generated" class="icon-btn" title="Copy">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
               </svg>
             </button>
           </div>
           <div class="generator-controls">
-            <label>
-              <span data-i18n="lengthLabel">Length</span>: <span id="length-value">16</span>
+            <label><span>Length</span>: <span id="length-value">16</span>
               <input type="range" id="gen-length" min="6" max="32" value="16">
             </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="gen-uppercase" checked>
-              <span data-i18n="uppercaseLetters">Uppercase (A-Z)</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="gen-lowercase" checked>
-              <span data-i18n="lowercaseLetters">Lowercase (a-z)</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="gen-numbers" checked>
-              <span data-i18n="numbers">Numbers (0-9)</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="gen-symbols" checked>
-              <span data-i18n="symbols">Symbols (!@#$...)</span>
-            </label>
+            <label class="checkbox-label"><input type="checkbox" id="gen-uppercase" checked><span>Uppercase (A-Z)</span></label>
+            <label class="checkbox-label"><input type="checkbox" id="gen-lowercase" checked><span>Lowercase (a-z)</span></label>
+            <label class="checkbox-label"><input type="checkbox" id="gen-numbers" checked><span>Numbers (0-9)</span></label>
+            <label class="checkbox-label"><input type="checkbox" id="gen-symbols" checked><span>Symbols (!@#$...)</span></label>
           </div>
-          <button id="regenerate-btn" class="btn-primary" data-i18n="generateNew">Generate New</button>
+          <button id="regenerate-btn" class="btn-primary">Generate New</button>
         </div>
       </div>
     </div>

@@ -27,8 +27,9 @@ export async function deriveKeyV1(password: string, salt: Uint8Array): Promise<U
 }
 
 export async function deriveKeyV2(password: string, salt: Uint8Array): Promise<Uint8Array> {
+  const passwordBytes = new TextEncoder().encode(password);
   const hashHex = await argon2id({
-    password,
+    password: passwordBytes,
     salt,
     iterations: 2,
     memorySize: 32768,   // 2^15 = 32MB (in KB)
@@ -40,8 +41,9 @@ export async function deriveKeyV2(password: string, salt: Uint8Array): Promise<U
 }
 
 export async function deriveKeyV3(password: string, salt: Uint8Array): Promise<Uint8Array> {
+  const passwordBytes = new TextEncoder().encode(password);
   const hashHex = await argon2id({
-    password,
+    password: passwordBytes,
     salt,
     iterations: 3,
     memorySize: 65536,    // 2^16 = 64MB (in KB)

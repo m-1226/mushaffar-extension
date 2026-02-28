@@ -1,5 +1,5 @@
 /**
- * Popup main script — handles all popup UI interactions.
+ * Popup main script — 3-state flow: Setup → Lock → Main.
  */
 
 import type { PasswordModel } from '../models/password';
@@ -8,30 +8,54 @@ import type { AuthenticatorModel } from '../models/authenticator';
 import type { FolderModel } from '../models/folder';
 import { generateTOTP } from '../crypto/totp';
 import { maskedCardNumber } from '../models/card';
+import { matchesDomain } from '../models/password';
 
 // --- DOM references ---
+const setupScreen = document.getElementById('setup-screen')!;
 const lockScreen = document.getElementById('lock-screen')!;
 const mainScreen = document.getElementById('main-screen')!;
+
+// Setup
+const setupChoice = document.getElementById('setup-choice')!;
+const setupFreshBtn = document.getElementById('setup-fresh-btn')!;
+const setupImportBtn = document.getElementById('setup-import-btn')!;
+const setupFreshSection = document.getElementById('setup-fresh')!;
+const setupImportSection = document.getElementById('setup-import')!;
+const setupForm = document.getElementById('setup-form') as HTMLFormElement;
+const setupPasswordInput = document.getElementById('setup-password') as HTMLInputElement;
+const setupConfirmInput = document.getElementById('setup-confirm') as HTMLInputElement;
+const setupError = document.getElementById('setup-error')!;
+const importForm = document.getElementById('import-form') as HTMLFormElement;
+const importFileInput = document.getElementById('import-file') as HTMLInputElement;
+const fileDropZone = document.getElementById('file-drop-zone')!;
+const fileLabel = document.getElementById('file-label')!;
+const importBackupPwdInput = document.getElementById('import-backup-password') as HTMLInputElement;
+const importMasterPwdInput = document.getElementById('import-master-password') as HTMLInputElement;
+const importConfirmInput = document.getElementById('import-confirm') as HTMLInputElement;
+const importError = document.getElementById('import-error')!;
+const setupBack1 = document.getElementById('setup-back-1')!;
+const setupBack2 = document.getElementById('setup-back-2')!;
+
+// Lock
 const unlockForm = document.getElementById('unlock-form') as HTMLFormElement;
 const masterPasswordInput = document.getElementById('master-password') as HTMLInputElement;
 const togglePasswordBtn = document.getElementById('toggle-password')!;
 const unlockBtn = document.getElementById('unlock-btn') as HTMLButtonElement;
 const unlockError = document.getElementById('unlock-error')!;
+
+// Main
 const userEmailEl = document.getElementById('user-email')!;
+const connectGoogleBtn = document.getElementById('connect-google-btn')!;
 const syncBtn = document.getElementById('sync-btn')!;
 const lockBtn = document.getElementById('lock-btn')!;
+const suggestedSection = document.getElementById('suggested-section')!;
+const suggestedList = document.getElementById('suggested-list')!;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
-
-// Tab elements
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
-
-// Lists
 const passwordList = document.getElementById('password-list')!;
 const cardList = document.getElementById('card-list')!;
 const authenticatorList = document.getElementById('authenticator-list')!;
-
-// Generator
 const generatedPasswordEl = document.getElementById('generated-password')!;
 const copyGeneratedBtn = document.getElementById('copy-generated')!;
 const genLengthInput = document.getElementById('gen-length') as HTMLInputElement;
@@ -44,19 +68,76 @@ let allCards: CardModel[] = [];
 let allAuthenticators: AuthenticatorModel[] = [];
 let allFolders: FolderModel[] = [];
 let totpInterval: ReturnType<typeof setInterval> | null = null;
+let importFileData: string | null = null;
+let currentTabId: number | null = null;
 
 // --- Init ---
 async function init() {
-  const state = await sendMessage({ type: 'getState' });
-  if (state.isUnlocked) {
-    showMainScreen(state.userEmail);
-    await loadAllData();
+  const state = await sendMessage({ type: 'getSetupState' });
+
+  if (!state.isSetUp) {
+    showScreen('setup');
+  } else if (!state.isUnlocked) {
+    showScreen('lock');
   } else {
-    showLockScreen();
+    showScreen('main');
+    const fullState = await sendMessage({ type: 'getState' });
+    if (fullState.userEmail) userEmailEl.textContent = fullState.userEmail;
+    await loadAllData();
+    await showSuggestedForCurrentSite();
+    await checkPremiumUI();
   }
 }
 
-// --- Message helpers ---
+async function showSuggestedForCurrentSite() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url || !tab.id) return;
+    currentTabId = tab.id;
+
+    const matches = allPasswords.filter(p => matchesDomain(p.websiteUrl, tab.url!));
+    if (matches.length === 0) {
+      suggestedSection.classList.add('hidden');
+      return;
+    }
+
+    suggestedSection.classList.remove('hidden');
+    suggestedList.innerHTML = matches.map(p => {
+      const domain = p.websiteUrl ? extractDomainForFavicon(p.websiteUrl) : '';
+      const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '';
+
+      return `
+        <div class="item-card suggested-card" data-id="${p.id}">
+          <div class="item-icon">
+            ${faviconUrl ? `<img src="${faviconUrl}" alt="">` : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`}
+          </div>
+          <div class="item-info">
+            <div class="item-name">${escapeHtml(p.keyName)}</div>
+            <div class="item-detail">${escapeHtml(p.email || '')}</div>
+          </div>
+          <button class="btn-fill" data-email="${escapeAttr(p.email || '')}" data-password="${escapeAttr(p.password)}">Fill</button>
+        </div>
+      `;
+    }).join('');
+
+    // Fill button handlers
+    suggestedList.querySelectorAll('.btn-fill').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const el = btn as HTMLElement;
+        if (currentTabId) {
+          chrome.tabs.sendMessage(currentTabId, {
+            type: 'fillCredential',
+            email: el.dataset.email,
+            password: el.dataset.password,
+          });
+          window.close();
+        }
+      });
+    });
+  } catch { /* ignore — e.g. on chrome:// pages */ }
+}
+
 function sendMessage(msg: unknown): Promise<any> {
   return chrome.runtime.sendMessage(msg);
 }
@@ -75,17 +156,151 @@ async function copyToClipboard(text: string) {
 }
 
 // --- Screen switching ---
-function showLockScreen() {
-  lockScreen.classList.add('active');
+function showScreen(screen: 'setup' | 'lock' | 'main') {
+  setupScreen.classList.remove('active');
+  lockScreen.classList.remove('active');
   mainScreen.classList.remove('active');
-  masterPasswordInput.focus();
+
+  if (screen === 'setup') {
+    setupScreen.classList.add('active');
+  } else if (screen === 'lock') {
+    lockScreen.classList.add('active');
+    masterPasswordInput.focus();
+  } else {
+    mainScreen.classList.add('active');
+  }
 }
 
-function showMainScreen(email?: string) {
-  lockScreen.classList.remove('active');
-  mainScreen.classList.add('active');
-  if (email) userEmailEl.textContent = email;
+// --- Setup: Fresh vault ---
+setupFreshBtn.addEventListener('click', () => {
+  setupChoice.classList.add('hidden');
+  setupFreshSection.classList.remove('hidden');
+  setupPasswordInput.focus();
+});
+
+setupBack1.addEventListener('click', () => {
+  setupFreshSection.classList.add('hidden');
+  setupChoice.classList.remove('hidden');
+});
+
+setupForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  setupError.classList.add('hidden');
+
+  const pwd = setupPasswordInput.value;
+  const confirm = setupConfirmInput.value;
+
+  if (pwd.length < 8) {
+    setupError.textContent = 'Password must be at least 8 characters';
+    setupError.classList.remove('hidden');
+    return;
+  }
+  if (pwd !== confirm) {
+    setupError.textContent = 'Passwords do not match';
+    setupError.classList.remove('hidden');
+    return;
+  }
+
+  const result = await sendMessage({ type: 'setup', masterPassword: pwd });
+  if (result.success) {
+    showScreen('main');
+    await loadAllData();
+  } else {
+    setupError.textContent = result.error || 'Setup failed';
+    setupError.classList.remove('hidden');
+  }
+});
+
+// --- Setup: Import ---
+setupImportBtn.addEventListener('click', () => {
+  setupChoice.classList.add('hidden');
+  setupImportSection.classList.remove('hidden');
+});
+
+setupBack2.addEventListener('click', () => {
+  setupImportSection.classList.add('hidden');
+  setupChoice.classList.remove('hidden');
+  importFileData = null;
+  fileLabel.textContent = 'Drop .mushaffar file or click';
+});
+
+fileDropZone.addEventListener('click', () => importFileInput.click());
+fileDropZone.addEventListener('dragover', (e) => { e.preventDefault(); fileDropZone.classList.add('dragover'); });
+fileDropZone.addEventListener('dragleave', () => fileDropZone.classList.remove('dragover'));
+fileDropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  fileDropZone.classList.remove('dragover');
+  const file = (e as DragEvent).dataTransfer?.files[0];
+  if (file) handleFileSelect(file);
+});
+
+importFileInput.addEventListener('change', () => {
+  const file = importFileInput.files?.[0];
+  if (file) handleFileSelect(file);
+});
+
+function handleFileSelect(file: File) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    // Read as text (base64-encoded backup)
+    importFileData = reader.result as string;
+    fileLabel.textContent = file.name;
+  };
+  reader.readAsText(file);
 }
+
+importForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  importError.classList.add('hidden');
+
+  if (!importFileData) {
+    importError.textContent = 'Please select a .mushaffar file';
+    importError.classList.remove('hidden');
+    return;
+  }
+
+  const backupPwd = importBackupPwdInput.value;
+  const masterPwd = importMasterPwdInput.value;
+  const confirm = importConfirmInput.value;
+
+  if (!backupPwd) {
+    importError.textContent = 'Enter backup password from your app';
+    importError.classList.remove('hidden');
+    return;
+  }
+  if (masterPwd.length < 8) {
+    importError.textContent = 'Master password must be at least 8 characters';
+    importError.classList.remove('hidden');
+    return;
+  }
+  if (masterPwd !== confirm) {
+    importError.textContent = 'Passwords do not match';
+    importError.classList.remove('hidden');
+    return;
+  }
+
+  const importBtn = document.getElementById('import-btn') as HTMLButtonElement;
+  importBtn.disabled = true;
+  importBtn.textContent = 'Decrypting...';
+
+  const result = await sendMessage({
+    type: 'importBackup',
+    backupData: importFileData.trim(),
+    backupPassword: backupPwd,
+    masterPassword: masterPwd,
+  });
+
+  importBtn.disabled = false;
+  importBtn.textContent = 'Import & Create Vault';
+
+  if (result.success) {
+    showScreen('main');
+    await loadAllData();
+  } else {
+    importError.textContent = result.error || 'Import failed';
+    importError.classList.remove('hidden');
+  }
+});
 
 // --- Unlock ---
 unlockForm.addEventListener('submit', async (e) => {
@@ -104,17 +319,17 @@ unlockForm.addEventListener('submit', async (e) => {
 
   if (result.success) {
     masterPasswordInput.value = '';
-    showMainScreen();
+    showScreen('main');
     const state = await sendMessage({ type: 'getState' });
     if (state.userEmail) userEmailEl.textContent = state.userEmail;
     await loadAllData();
+    await checkPremiumUI();
   } else {
     unlockError.textContent = result.error || 'Wrong password';
     unlockError.classList.remove('hidden');
   }
 });
 
-// Toggle password visibility
 togglePasswordBtn.addEventListener('click', () => {
   const isPassword = masterPasswordInput.type === 'password';
   masterPasswordInput.type = isPassword ? 'text' : 'password';
@@ -127,17 +342,59 @@ lockBtn.addEventListener('click', async () => {
   allCards = [];
   allAuthenticators = [];
   if (totpInterval) clearInterval(totpInterval);
-  showLockScreen();
+  showScreen('lock');
+});
+
+// --- Premium check (show/hide sync button) ---
+async function checkPremiumUI() {
+  const result = await sendMessage({ type: 'checkPremium' });
+  if (result.isPremium) {
+    syncBtn.style.display = '';
+    connectGoogleBtn.style.display = 'none';
+    const state = await sendMessage({ type: 'getState' });
+    if (state.userEmail) userEmailEl.textContent = state.userEmail;
+  } else {
+    syncBtn.style.display = 'none';
+    connectGoogleBtn.style.display = '';
+  }
+}
+
+// --- Connect Google (interactive sign-in) ---
+connectGoogleBtn.addEventListener('click', async () => {
+  connectGoogleBtn.querySelector('svg')?.classList.add('spinning');
+  try {
+    const result = await sendMessage({ type: 'connectGoogle' });
+    if (result.error) {
+      showToast(result.error);
+      return;
+    }
+    if (result.email) userEmailEl.textContent = result.email;
+    if (result.isPremium) {
+      syncBtn.style.display = '';
+      connectGoogleBtn.style.display = 'none';
+      showToast('Drive sync enabled!');
+    } else {
+      showToast('Drive sync requires Premium');
+    }
+  } catch {
+    showToast('Google sign-in failed');
+  } finally {
+    connectGoogleBtn.querySelector('svg')?.classList.remove('spinning');
+  }
 });
 
 // --- Sync ---
 syncBtn.addEventListener('click', async () => {
+  const backupPassword = prompt('Enter your Drive backup password:');
+  if (!backupPassword) return;
+
   syncBtn.querySelector('svg')?.classList.add('spinning');
-  const result = await sendMessage({ type: 'sync' });
+  const result = await sendMessage({ type: 'syncFromDrive', backupPassword });
   syncBtn.querySelector('svg')?.classList.remove('spinning');
 
   if (result.success) {
     await loadAllData();
+    await showSuggestedForCurrentSite();
     showToast('Synced!');
   } else {
     showToast(result.error || 'Sync failed');
@@ -152,8 +409,6 @@ tabs.forEach(tab => {
     tabContents.forEach(tc => tc.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById(`tab-${target}`)?.classList.add('active');
-
-    // Reset auto-lock timer on interaction
     sendMessage({ type: 'resetAutoLock' });
   });
 });
@@ -200,9 +455,7 @@ function renderPasswords(filter = '') {
 
   passwordList.innerHTML = filtered.map(p => {
     const domain = p.websiteUrl ? extractDomainForFavicon(p.websiteUrl) : '';
-    const faviconUrl = domain
-      ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
-      : '';
+    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '';
 
     return `
       <div class="item-card" data-id="${p.id}">
@@ -225,7 +478,6 @@ function renderPasswords(filter = '') {
     `;
   }).join('');
 
-  // Click handlers
   passwordList.querySelectorAll('.copy-user').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -298,15 +550,10 @@ function renderAuthenticators(filter = '') {
   }
   noAuth.classList.add('hidden');
 
-  renderTOTPList(filtered);
-}
-
-function renderTOTPList(authenticators: AuthenticatorModel[]) {
-  authenticatorList.innerHTML = authenticators.map(a => {
+  authenticatorList.innerHTML = filtered.map(a => {
     const { code, remaining, period } = generateTOTP(a);
-    const progress = remaining / period;
     const circumference = 2 * Math.PI * 10;
-    const offset = circumference * (1 - progress);
+    const offset = circumference * (1 - remaining / period);
 
     return `
       <div class="item-card" data-id="${a.id}">
@@ -319,7 +566,7 @@ function renderTOTPList(authenticators: AuthenticatorModel[]) {
           <div class="item-name">${escapeHtml(a.issuer)}</div>
           <div class="item-detail">${escapeHtml(a.accountName)}</div>
         </div>
-        <div class="totp-code" data-secret="${escapeAttr(a.secret)}" data-digits="${a.digits || 6}" data-period="${a.period || 30}" data-algorithm="${a.algorithm || 'SHA1'}">${formatTOTP(code)}</div>
+        <div class="totp-code">${formatTOTP(code)}</div>
         <div class="totp-timer">
           <svg class="totp-timer-circle" width="28" height="28" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" fill="none" stroke="var(--border)" stroke-width="2"/>
@@ -347,8 +594,7 @@ function startTOTPTimer() {
   if (totpInterval) clearInterval(totpInterval);
   totpInterval = setInterval(() => {
     if (allAuthenticators.length > 0) {
-      const filter = searchInput.value.toLowerCase();
-      renderAuthenticators(filter);
+      renderAuthenticators(searchInput.value.toLowerCase());
     }
   }, 1000);
 }
@@ -364,8 +610,7 @@ genLengthInput.addEventListener('input', () => {
   generateNewPassword();
 });
 
-const genCheckboxes = ['gen-uppercase', 'gen-lowercase', 'gen-numbers', 'gen-symbols'];
-genCheckboxes.forEach(id => {
+['gen-uppercase', 'gen-lowercase', 'gen-numbers', 'gen-symbols'].forEach(id => {
   document.getElementById(id)?.addEventListener('change', generateNewPassword);
 });
 
@@ -373,7 +618,7 @@ regenerateBtn.addEventListener('click', generateNewPassword);
 
 copyGeneratedBtn.addEventListener('click', () => {
   const text = generatedPasswordEl.textContent || '';
-  if (text && text !== '••••••••••••') copyToClipboard(text);
+  if (text && text !== '............') copyToClipboard(text);
 });
 
 async function generateNewPassword() {
@@ -404,16 +649,14 @@ function escapeAttr(text: string): string {
 
 function extractDomainForFavicon(url: string): string {
   try {
-    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
-    return parsed.hostname;
+    return new URL(url.startsWith('http') ? url : `https://${url}`).hostname;
   } catch {
     return '';
   }
 }
 
 function intToColor(colorInt: number): string {
-  const hex = (colorInt & 0xFFFFFF).toString(16).padStart(6, '0');
-  return `#${hex}`;
+  return `#${(colorInt & 0xFFFFFF).toString(16).padStart(6, '0')}`;
 }
 
 // --- Start ---

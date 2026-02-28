@@ -13,6 +13,17 @@ import { deriveKeyV1, deriveKeyV2, deriveKeyV3 } from './argon2';
 import { verifyHMAC, generateHMAC } from './hmac';
 import type { VaultData } from '../models/vault';
 
+/** Safe base64 encoding that doesn't overflow the call stack for large arrays. */
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 function detectVersion(bytes: Uint8Array): string {
   if (bytes.length >= 2) {
     const prefix = String.fromCharCode(bytes[0], bytes[1]);
@@ -151,6 +162,16 @@ export async function decryptBackup(encryptedBackup: string, password: string): 
  * Output: base64-encoded string.
  */
 export async function encryptBackup(vault: VaultData, password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const keyBytes = await deriveKeyV3(password, salt);
+  return encryptWithKey(vault, keyBytes, salt);
+}
+
+/**
+ * Encrypt vault using a pre-derived key (skips Argon2 — fast for local saves).
+ * Returns base64-encoded v3 format string.
+ */
+export async function encryptWithKey(vault: VaultData, key: Uint8Array, salt: Uint8Array): Promise<string> {
   const jsonString = JSON.stringify({
     passwords: vault.passwords,
     authenticators: vault.authenticators,
@@ -158,31 +179,116 @@ export async function encryptBackup(vault: VaultData, password: string): Promise
     folders: vault.folders,
   });
 
-  // Generate 32-byte salt
-  const salt = crypto.getRandomValues(new Uint8Array(32));
-
-  // Derive key with Argon2 v3
-  const keyBytes = await deriveKeyV3(password, salt);
-
-  // Generate 16-byte IV
   const iv = crypto.getRandomValues(new Uint8Array(16));
+  const encryptedBytes = await aesEncrypt(key, iv, jsonString);
+  const hmac = await generateHMAC(key, encryptedBytes);
 
-  // AES-256-CBC encrypt
-  const encryptedBytes = await aesEncrypt(keyBytes, iv, jsonString);
-
-  // HMAC-SHA256
-  const hmac = await generateHMAC(keyBytes, encryptedBytes);
-
-  // Combine: "v3" + salt + iv + encrypted + hmac
   const versionBytes = new TextEncoder().encode('v3');
-  const combined = new Uint8Array([
-    ...versionBytes,
-    ...salt,
-    ...iv,
-    ...encryptedBytes,
-    ...hmac,
-  ]);
+  const totalLen = versionBytes.length + salt.length + iv.length + encryptedBytes.length + hmac.length;
+  const combined = new Uint8Array(totalLen);
+  let offset = 0;
+  combined.set(versionBytes, offset); offset += versionBytes.length;
+  combined.set(salt, offset); offset += salt.length;
+  combined.set(iv, offset); offset += iv.length;
+  combined.set(encryptedBytes, offset); offset += encryptedBytes.length;
+  combined.set(hmac, offset);
 
-  // Base64 encode
-  return btoa(String.fromCharCode(...combined));
+  return uint8ToBase64(combined);
+}
+
+/**
+ * Decrypt a v3 blob using a pre-derived key (skips Argon2).
+ */
+export async function decryptWithKey(encryptedBlob: string, key: Uint8Array): Promise<VaultData> {
+  const binary = atob(encryptedBlob);
+  const combinedBytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+
+  const offset = 2; // skip "v3" prefix
+  const iv = combinedBytes.slice(offset + 32, offset + 48);
+  const hmacBytes = combinedBytes.slice(combinedBytes.length - 32);
+  const encryptedBytes = combinedBytes.slice(offset + 48, combinedBytes.length - 32);
+
+  const hmacValid = await verifyHMAC(key, encryptedBytes, hmacBytes);
+  if (!hmacValid) {
+    throw new Error('Wrong password or corrupted file');
+  }
+
+  const decrypted = await aesDecrypt(key, iv, encryptedBytes);
+  const parsed = JSON.parse(decrypted);
+
+  return {
+    passwords: parsed.passwords || [],
+    folders: parsed.folders || [],
+    cards: parsed.cards || [],
+    authenticators: parsed.authenticators || [],
+  };
+}
+
+/**
+ * Decrypt a backup and also return the derived key + salt for caching.
+ * Used on unlock so subsequent saves can skip Argon2.
+ */
+export async function decryptBackupWithKeyReturn(
+  encryptedBackup: string,
+  password: string
+): Promise<{ vault: VaultData; key: Uint8Array; salt: Uint8Array }> {
+  let combinedBytes: Uint8Array;
+  if (isHex(encryptedBackup)) {
+    combinedBytes = hexToBytes(encryptedBackup);
+  } else {
+    const binary = atob(encryptedBackup);
+    combinedBytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  }
+
+  const version = detectVersion(combinedBytes);
+
+  if (version === 'v2' || version === 'v3') {
+    const offset = 2;
+    const salt = combinedBytes.slice(offset, offset + 32);
+    const iv = combinedBytes.slice(offset + 32, offset + 48);
+    const hmacBytes = combinedBytes.slice(combinedBytes.length - 32);
+    const encryptedBytes = combinedBytes.slice(offset + 48, combinedBytes.length - 32);
+
+    const keyBytes = version === 'v3'
+      ? await deriveKeyV3(password, salt)
+      : await deriveKeyV2(password, salt);
+
+    const hmacValid = await verifyHMAC(keyBytes, encryptedBytes, hmacBytes);
+    if (!hmacValid) {
+      throw new Error('Wrong password or corrupted file');
+    }
+
+    let decrypted = await aesDecrypt(keyBytes, iv, encryptedBytes);
+    if (isHex(decrypted)) {
+      decrypted = new TextDecoder().decode(hexToBytes(decrypted));
+    }
+
+    const parsed = JSON.parse(decrypted);
+    const vault: VaultData = {
+      passwords: parsed.passwords || [],
+      folders: parsed.folders || [],
+      cards: parsed.cards || [],
+      authenticators: parsed.authenticators || [],
+    };
+
+    return { vault, key: keyBytes, salt };
+  }
+
+  // v1 — derive key and return it
+  const salt = combinedBytes.slice(0, 32);
+  const iv = combinedBytes.slice(32, 48);
+  const encryptedBytes = combinedBytes.slice(48);
+  const keyBytes = await deriveKeyV1(password, salt);
+
+  let decrypted = await aesDecrypt(keyBytes, iv, encryptedBytes);
+  if (isHex(decrypted)) {
+    decrypted = new TextDecoder().decode(hexToBytes(decrypted));
+  }
+
+  const parsed = JSON.parse(decrypted);
+  const vault: VaultData = Array.isArray(parsed)
+    ? { passwords: parsed, folders: [], cards: [], authenticators: [] }
+    : { passwords: parsed.passwords || [], folders: parsed.folders || [], cards: parsed.cards || [], authenticators: parsed.authenticators || [] };
+
+  return { vault, key: keyBytes, salt };
 }
