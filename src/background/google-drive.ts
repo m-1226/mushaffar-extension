@@ -9,12 +9,15 @@ const BACKUP_FILE_NAME = 'auto_backup_mushaffar.mushaffar';
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 
-async function getAuthToken(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive: true }, (result) => {
+/**
+ * Get an auth token non-interactively (returns null if not signed in).
+ */
+export function getAuthTokenSilent(): Promise<string | null> {
+  return new Promise((resolve) => {
+    chrome.identity.getAuthToken({ interactive: false }, (result) => {
       const token = typeof result === 'string' ? result : result?.token;
       if (chrome.runtime.lastError || !token) {
-        reject(new Error(chrome.runtime.lastError?.message || 'Auth failed'));
+        resolve(null);
       } else {
         resolve(token);
       }
@@ -22,13 +25,28 @@ async function getAuthToken(): Promise<string> {
   });
 }
 
-async function driveRequest(path: string, options: RequestInit = {}, token?: string): Promise<Response> {
-  const authToken = token || await getAuthToken();
+/**
+ * Get an auth token interactively (prompts sign-in if needed).
+ */
+export function getAuthTokenInteractive(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive: true }, (result) => {
+      const token = typeof result === 'string' ? result : result?.token;
+      if (chrome.runtime.lastError || !token) {
+        reject(new Error(chrome.runtime.lastError?.message || 'Sign-in cancelled'));
+      } else {
+        resolve(token);
+      }
+    });
+  });
+}
+
+async function driveRequest(path: string, options: RequestInit = {}, token: string): Promise<Response> {
   const url = path.startsWith('http') ? path : `${DRIVE_API}${path}`;
   return fetch(url, {
     ...options,
     headers: {
-      Authorization: `Bearer ${authToken}`,
+      Authorization: `Bearer ${token}`,
       ...options.headers,
     },
   });
@@ -37,6 +55,7 @@ async function driveRequest(path: string, options: RequestInit = {}, token?: str
 async function findFolder(token: string): Promise<string | null> {
   const query = `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   const res = await driveRequest(`/files?q=${encodeURIComponent(query)}&fields=files(id,name)`, {}, token);
+  if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
@@ -50,6 +69,7 @@ async function createFolder(token: string): Promise<string> {
       mimeType: 'application/vnd.google-apps.folder',
     }),
   }, token);
+  if (!res.ok) throw new Error(`Failed to create Drive folder: ${res.status}`);
   const data = await res.json();
   return data.id;
 }
@@ -57,25 +77,28 @@ async function createFolder(token: string): Promise<string> {
 async function findBackupFile(folderId: string, token: string): Promise<string | null> {
   const query = `name='${BACKUP_FILE_NAME}' and '${folderId}' in parents and trashed=false`;
   const res = await driveRequest(`/files?q=${encodeURIComponent(query)}&fields=files(id,name)`, {}, token);
+  if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
 
 /**
  * Download the encrypted backup from Google Drive.
+ * Requires a token (use getAuthTokenInteractive before calling).
  * Returns the raw base64-encoded backup string, or null if not found.
  */
-export async function downloadBackup(): Promise<string | null> {
-  const token = await getAuthToken();
-
-  let folderId = await findFolder(token);
+export async function downloadBackup(token: string): Promise<string | null> {
+  const folderId = await findFolder(token);
   if (!folderId) return null;
 
   const fileId = await findBackupFile(folderId, token);
   if (!fileId) return null;
 
   const res = await driveRequest(`/files/${fileId}?alt=media`, {}, token);
-  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    throw new Error(`Download failed (${res.status})`);
+  }
 
   // The backup is raw bytes; convert to base64 string for decryption
   const arrayBuffer = await res.arrayBuffer();
@@ -103,10 +126,9 @@ export async function downloadBackup(): Promise<string | null> {
 /**
  * Upload encrypted backup to Google Drive.
  * Creates folder if needed, replaces existing file.
+ * Requires a token.
  */
-export async function uploadBackup(base64Data: string): Promise<void> {
-  const token = await getAuthToken();
-
+export async function uploadBackup(base64Data: string, token: string): Promise<void> {
   let folderId = await findFolder(token);
   if (!folderId) {
     folderId = await createFolder(token);
@@ -121,7 +143,7 @@ export async function uploadBackup(base64Data: string): Promise<void> {
 
   if (existingFileId) {
     // Update existing file
-    await fetch(`${UPLOAD_API}/files/${existingFileId}?uploadType=media`, {
+    const res = await fetch(`${UPLOAD_API}/files/${existingFileId}?uploadType=media`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -129,6 +151,7 @@ export async function uploadBackup(base64Data: string): Promise<void> {
       },
       body: rawBytes,
     });
+    if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   } else {
     // Create new file with multipart upload
     const metadata = JSON.stringify({
@@ -156,7 +179,7 @@ export async function uploadBackup(base64Data: string): Promise<void> {
     combined.set(rawBytes, bodyStart.length);
     combined.set(bodyEndBytes, bodyStart.length + rawBytes.length);
 
-    await fetch(`${UPLOAD_API}/files?uploadType=multipart`, {
+    const res = await fetch(`${UPLOAD_API}/files?uploadType=multipart`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -164,17 +187,19 @@ export async function uploadBackup(base64Data: string): Promise<void> {
       },
       body: combined,
     });
+    if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   }
 }
 
 /**
  * Get the current user's email via Google userinfo API.
+ * Accepts a token to avoid re-fetching interactively.
  */
-export async function getUserEmail(): Promise<string> {
-  const token = await getAuthToken();
+export async function getUserEmail(token: string): Promise<string> {
   const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (!res.ok) throw new Error(`Failed to get user info (${res.status})`);
   const data = await res.json();
   return data.email;
 }

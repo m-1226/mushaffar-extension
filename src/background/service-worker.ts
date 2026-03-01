@@ -4,7 +4,7 @@
 
 import { decryptBackup, encryptBackup } from '../crypto/decrypt';
 import { isVaultSetUp, createVault, unlockVault, saveVault, getLastSyncTimestamp, setLastSyncTimestamp } from '../storage/vault-storage';
-import { downloadBackup, uploadBackup, getUserEmail, signOut } from './google-drive';
+import { downloadBackup, uploadBackup, getUserEmail, signOut, getAuthTokenSilent, getAuthTokenInteractive } from './google-drive';
 import { checkPremiumStatus } from '../services/license-service';
 import { mergeVaults } from '../services/conflict-resolver';
 import type { VaultData } from '../models/vault';
@@ -259,15 +259,15 @@ async function handleSyncFromDrive(
     return { success: false, error: 'Vault is locked' };
   }
 
-  const premium = await handleCheckPremium();
-  if (!premium.isPremium) {
-    return { success: false, error: 'Premium required for Drive sync' };
-  }
-
   try {
-    const backup = await downloadBackup();
+    const token = await getAuthTokenSilent();
+    if (!token) {
+      return { success: false, error: 'Not signed in to Google. Connect your account first.' };
+    }
+
+    const backup = await downloadBackup(token);
     if (!backup) {
-      return { success: false, error: 'No backup found on Google Drive' };
+      return { success: false, error: 'No backup found on Google Drive. Upload one first or check the Mushaffar app.' };
     }
 
     const remoteVault = await decryptBackup(backup, backupPassword);
@@ -276,12 +276,12 @@ async function handleSyncFromDrive(
 
     vault = merged;
     await persistVault();
-    await setLastSyncTimestamp(new Date());
 
     // Upload merged vault back to Drive
     const encrypted = await encryptBackup(merged, backupPassword);
-    await uploadBackup(encrypted);
+    await uploadBackup(encrypted, token);
 
+    await setLastSyncTimestamp(new Date());
     updateBadge();
     return { success: true };
   } catch (err) {
@@ -292,18 +292,18 @@ async function handleSyncFromDrive(
 async function handleSyncToDrive(
   backupPassword: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!vault) {
+  if (!vault || !cachedKey || !cachedSalt) {
     return { success: false, error: 'Vault is locked' };
   }
 
-  const premium = await handleCheckPremium();
-  if (!premium.isPremium) {
-    return { success: false, error: 'Premium required for Drive sync' };
-  }
-
   try {
+    const token = await getAuthTokenSilent();
+    if (!token) {
+      return { success: false, error: 'Not signed in to Google. Connect your account first.' };
+    }
+
     const encrypted = await encryptBackup(vault, backupPassword);
-    await uploadBackup(encrypted);
+    await uploadBackup(encrypted, token);
     await setLastSyncTimestamp(new Date());
     return { success: true };
   } catch (err) {
@@ -336,34 +336,24 @@ async function handleCheckPremium(): Promise<{ isPremium: boolean }> {
   }
 
   try {
-    const token = await getAuthTokenSafe();
+    const token = await getAuthTokenSilent();
     if (!token) return { isPremium: false };
 
-    const email = await getUserEmail();
+    const email = await getUserEmail(token);
     userEmail = email;
     isPremium = await checkPremiumStatus(email, token);
     premiumCheckedAt = Date.now();
     return { isPremium };
   } catch {
-    return { isPremium };
+    return { isPremium: false };
   }
 }
 
 async function handleConnectGoogle(): Promise<{ success: boolean; email?: string; isPremium?: boolean; error?: string }> {
   try {
-    // Interactive auth — will prompt Google sign-in if needed
-    const token = await new Promise<string>((resolve, reject) => {
-      chrome.identity.getAuthToken({ interactive: true }, (result) => {
-        const t = typeof result === 'string' ? result : result?.token;
-        if (chrome.runtime.lastError || !t) {
-          reject(new Error(chrome.runtime.lastError?.message || 'Sign-in cancelled'));
-        } else {
-          resolve(t);
-        }
-      });
-    });
+    const token = await getAuthTokenInteractive();
 
-    const email = await getUserEmail();
+    const email = await getUserEmail(token);
     userEmail = email;
 
     const premium = await checkPremiumStatus(email, token);
@@ -374,15 +364,6 @@ async function handleConnectGoogle(): Promise<{ success: boolean; email?: string
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
-}
-
-function getAuthTokenSafe(): Promise<string | null> {
-  return new Promise((resolve) => {
-    chrome.identity.getAuthToken({ interactive: false }, (result) => {
-      const token = typeof result === 'string' ? result : result?.token;
-      resolve(token || null);
-    });
-  });
 }
 
 // --- Credential matching ---
