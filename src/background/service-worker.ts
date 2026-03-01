@@ -47,6 +47,7 @@ export type MessageType =
   | { type: 'checkPremium' }
   | { type: 'connectGoogle' }
   | { type: 'signOut' }
+  | { type: 'exportBackup'; backupPassword: string }
   | { type: 'resetAutoLock' };
 
 chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
@@ -135,6 +136,9 @@ async function handleMessage(msg: MessageType): Promise<unknown> {
       premiumCheckedAt = 0;
       userEmail = null;
       return { success: true };
+
+    case 'exportBackup':
+      return await handleExportBackup(msg.backupPassword);
 
     case 'resetAutoLock':
       resetAutoLockTimer();
@@ -304,6 +308,23 @@ async function handleSyncToDrive(
     return { success: true };
   } catch (err) {
     return { success: false, error: (err as Error).message };
+  }
+}
+
+// --- Export backup ---
+
+async function handleExportBackup(
+  backupPassword: string
+): Promise<{ data?: string; error?: string }> {
+  if (!vault) {
+    return { error: 'Vault is locked' };
+  }
+
+  try {
+    const encrypted = await encryptBackup(vault, backupPassword);
+    return { data: encrypted };
+  } catch (err) {
+    return { error: (err as Error).message };
   }
 }
 

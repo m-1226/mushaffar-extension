@@ -28,6 +28,7 @@ export default defineConfig({
 
         // Copy CSS files
         cpSync(resolve(root, 'src/popup/popup.css'), resolve(dist, 'popup.css'));
+        cpSync(resolve(root, 'src/options/options.css'), resolve(dist, 'options.css'));
         cpSync(resolve(root, 'src/content/content.css'), resolve(dist, 'content.css'));
 
         // Copy _locales

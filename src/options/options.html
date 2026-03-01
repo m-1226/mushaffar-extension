@@ -1,89 +1,245 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
-  <title>Mushaffar Settings</title>
-  <style>
-    :root {
-      --primary: #4895EF;
-      --bg: #0F1117;
-      --bg-card: #1A1D27;
-      --bg-input: #252833;
-      --text: #EAEDF3;
-      --text-secondary: #8E95A5;
-      --border: #2A2D3A;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #F5F7FA; --bg-card: #FFFFFF; --bg-input: #EDF0F5;
-        --text: #1A1D27; --text-secondary: #6B7280; --border: #E2E5EB;
-      }
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      padding: 40px;
-      max-width: 500px;
-      margin: 0 auto;
-    }
-    h1 { font-size: 24px; margin-bottom: 24px; color: var(--primary); }
-    .setting {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px;
-      margin-bottom: 12px;
-    }
-    .setting label {
-      display: flex; align-items: center; justify-content: space-between;
-      font-size: 14px;
-    }
-    .setting input[type="number"] {
-      width: 60px; padding: 6px 8px; background: var(--bg-input);
-      border: 1px solid var(--border); border-radius: 6px; color: var(--text);
-      font-size: 14px; text-align: center;
-    }
-    .setting-desc {
-      font-size: 12px; color: var(--text-secondary); margin-top: 6px;
-    }
-    .btn { padding: 10px 20px; background: var(--primary); color: white; border: none;
-      border-radius: 8px; cursor: pointer; font-size: 14px; margin-top: 16px; }
-    .btn:hover { opacity: 0.9; }
-    .saved { color: #4CAF50; font-size: 13px; margin-left: 8px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="options.css">
+  <title>Mushaffar — Vault</title>
 </head>
 <body>
-  <h1>Mushaffar Settings</h1>
-
-  <div class="setting">
-    <label>
-      <span>Auto-lock after (minutes)</span>
-      <input type="number" id="auto-lock-minutes" min="1" max="60" value="5">
-    </label>
-    <div class="setting-desc">Vault will lock automatically after this period of inactivity</div>
+  <!-- Lock overlay -->
+  <div id="lock-overlay" class="lock-overlay">
+    <div class="lock-card">
+      <img src="/assets/icons/icon-48.png" alt="Mushaffar">
+      <h2>Mushaffar</h2>
+      <p>Enter your master password to unlock</p>
+      <form id="lock-form">
+        <div class="input-row">
+          <input type="password" id="lock-password" placeholder="Master password" autocomplete="off" autofocus>
+          <button type="submit" class="btn-primary">Unlock</button>
+        </div>
+        <p id="lock-error" class="status-msg error hidden"></p>
+      </form>
+    </div>
   </div>
 
-  <div class="setting">
-    <label>
-      <span>Show auto-fill dropdown</span>
-      <input type="checkbox" id="show-autofill" checked>
-    </label>
-    <div class="setting-desc">Show password suggestions when focusing login forms</div>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="/assets/icons/icon-48.png" alt="">
+        <h1>Mushaffar</h1>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-section="vault">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+          </svg>
+          Vault
+        </button>
+        <button class="nav-item" data-section="generator">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1"/>
+          </svg>
+          Generator
+        </button>
+        <button class="nav-item" data-section="sync">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          </svg>
+          Sync
+        </button>
+        <button class="nav-item" data-section="settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+          Settings
+        </button>
+      </nav>
+      <div class="sidebar-footer">Mushaffar Password Manager</div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+      <!-- Vault section -->
+      <section id="section-vault">
+        <div class="section-header">
+          <h2>Vault</h2>
+        </div>
+
+        <div class="search-bar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="vault-search" placeholder="Search passwords, cards, 2FA...">
+        </div>
+
+        <div class="vault-tabs">
+          <button class="vault-tab active" data-tab="passwords">
+            Passwords <span class="count" id="password-count">0</span>
+          </button>
+          <button class="vault-tab" data-tab="cards">
+            Cards <span class="count" id="card-count">0</span>
+          </button>
+          <button class="vault-tab" data-tab="authenticators">
+            2FA <span class="count" id="auth-count">0</span>
+          </button>
+        </div>
+
+        <!-- Password list -->
+        <div id="tab-passwords" class="item-list"></div>
+
+        <!-- Card list -->
+        <div id="tab-cards" class="item-list hidden"></div>
+
+        <!-- Authenticator list -->
+        <div id="tab-authenticators" class="item-list hidden"></div>
+      </section>
+
+      <!-- Generator section -->
+      <section id="section-generator" class="hidden">
+        <div class="section-header">
+          <h2>Password Generator</h2>
+        </div>
+        <div class="generator-card">
+          <div class="generated-display">
+            <span id="opt-generated-password" class="generated-text">............</span>
+            <button id="opt-copy-generated" class="icon-btn" title="Copy">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+            </button>
+          </div>
+          <div class="gen-controls">
+            <label class="gen-range">Length: <span id="opt-length-value">16</span>
+              <input type="range" id="opt-gen-length" min="6" max="64" value="16">
+            </label>
+            <div class="gen-toggles">
+              <label><input type="checkbox" id="opt-gen-uppercase" checked> A-Z</label>
+              <label><input type="checkbox" id="opt-gen-lowercase" checked> a-z</label>
+              <label><input type="checkbox" id="opt-gen-numbers" checked> 0-9</label>
+              <label><input type="checkbox" id="opt-gen-symbols" checked> !@#</label>
+            </div>
+          </div>
+          <button id="opt-regenerate-btn" class="btn-primary">Regenerate</button>
+        </div>
+      </section>
+
+      <!-- Sync section -->
+      <section id="section-sync" class="hidden">
+        <div class="section-header">
+          <h2>Google Drive Sync</h2>
+        </div>
+        <div class="sync-section">
+          <!-- Not connected state -->
+          <div id="sync-not-connected">
+            <p style="margin-bottom:16px; color: var(--text-secondary); font-size: 14px;">
+              Connect your Google account to sync passwords with the Mushaffar app via Google Drive.
+              Premium subscription required.
+            </p>
+            <button id="connect-google-btn" class="btn-primary">Connect Google Account</button>
+            <p id="connect-error" class="status-msg error hidden"></p>
+          </div>
+
+          <!-- Connected state -->
+          <div id="sync-connected" class="hidden">
+            <div class="account-card">
+              <div class="account-info">
+                <div class="account-avatar" id="sync-avatar">?</div>
+                <div>
+                  <div class="account-email" id="sync-email"></div>
+                  <div class="account-status">
+                    <span id="sync-premium-badge"></span>
+                  </div>
+                </div>
+              </div>
+              <button id="sign-out-btn" class="btn-text" style="color: var(--danger);">Sign out</button>
+            </div>
+
+            <div id="sync-premium-section" class="hidden">
+              <div class="sync-input-group">
+                <label for="sync-backup-password">Drive backup password (from Mushaffar app)</label>
+                <input type="password" id="sync-backup-password" placeholder="Enter backup password">
+              </div>
+              <div class="sync-actions">
+                <button id="sync-from-drive-btn" class="btn-primary">Sync from Drive</button>
+                <button id="sync-to-drive-btn" class="btn-outline">Upload to Drive</button>
+              </div>
+              <p id="sync-status" class="status-msg hidden"></p>
+            </div>
+
+            <div id="sync-not-premium" class="hidden" style="margin-top:16px;">
+              <p style="color: var(--text-secondary); font-size: 14px;">
+                Google Drive sync requires a Mushaffar Premium subscription.
+                Upgrade in the Mushaffar mobile app to enable sync.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings section -->
+      <section id="section-settings" class="hidden">
+        <div class="section-header">
+          <h2>Settings</h2>
+        </div>
+        <div class="settings-section">
+          <div class="setting-group">
+            <div class="setting-item">
+              <div>
+                <div class="setting-label">Auto-lock after (minutes)</div>
+                <div class="setting-desc">Vault locks after this period of inactivity</div>
+              </div>
+              <input type="number" id="opt-auto-lock" min="1" max="60" value="5">
+            </div>
+            <div class="setting-item">
+              <div>
+                <div class="setting-label">Show autofill dropdown</div>
+                <div class="setting-desc">Show password suggestions on login forms</div>
+              </div>
+              <input type="checkbox" id="opt-show-autofill" checked>
+            </div>
+            <div class="setting-item">
+              <div>
+                <div class="setting-label">Save password prompts</div>
+                <div class="setting-desc">Ask to save new passwords after login</div>
+              </div>
+              <input type="checkbox" id="opt-save-prompts" checked>
+            </div>
+          </div>
+
+          <h3 style="font-size:14px; margin-bottom:12px;">Backup</h3>
+          <div class="setting-group">
+            <div class="setting-item" style="flex-direction:column; align-items:flex-start; gap:12px;">
+              <div>
+                <div class="setting-label">Export vault</div>
+                <div class="setting-desc">Download an encrypted .mushaffar backup file</div>
+              </div>
+              <div style="display:flex; gap:8px; width:100%;">
+                <input type="password" id="export-password" placeholder="Backup password" style="flex:1; padding:8px 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-input); color:var(--text); font-size:14px; outline:none;">
+                <button id="export-btn" class="btn-outline">Export</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-danger">
+            <h3>Danger zone</h3>
+            <div class="setting-group">
+              <div class="setting-item">
+                <div>
+                  <div class="setting-label">Lock vault now</div>
+                  <div class="setting-desc">Lock the vault immediately</div>
+                </div>
+                <button id="opt-lock-btn" class="btn-outline" style="color:var(--danger); border-color:var(--danger);">Lock</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
 
-  <div class="setting">
-    <label>
-      <span>Save password prompts</span>
-      <input type="checkbox" id="save-prompts" checked>
-    </label>
-    <div class="setting-desc">Ask to save new passwords after login</div>
-  </div>
-
-  <button class="btn" id="save-btn">Save Settings</button>
-  <span class="saved" id="saved-msg" style="display: none;">Saved!</span>
-
-  <script src="options.ts" type="module"></script>
+  <script type="module" src="options.ts"></script>
 </body>
 </html>
